@@ -14,13 +14,14 @@ if [ ! -f /swapfile ]; then
 fi
 
 id bot >/dev/null 2>&1 || sudo adduser --disabled-password --gecos "" bot
-sudo -iu bot bash -c "
-  set -e
-  [ -d raphaelone ] || git clone '$REPO_URL' raphaelone
+# Note: "sudo -i" mangles multi-line commands, so use -u/-H and an explicit cd.
+sudo -u bot -H bash -euc "
+  cd /home/bot
+  if [ -d raphaelone/.git ]; then git -C raphaelone pull --ff-only; else rm -rf raphaelone; git clone '$REPO_URL' raphaelone; fi
   cd raphaelone
   python3 -m venv .venv
   .venv/bin/pip install -q -r requirements.txt
-  [ -f .env ] || { cp .env.example .env; chmod 600 .env; sed -i 's/^DRY_RUN=.*/DRY_RUN=true/' .env; }
+  if [ ! -f .env ]; then cp .env.example .env; chmod 600 .env; sed -i 's/^DRY_RUN=.*/DRY_RUN=true/' .env; fi
 "
 sudo cp /home/bot/raphaelone/deploy/polybot.service /etc/systemd/system/
 sudo systemctl daemon-reload
