@@ -16,7 +16,7 @@ def make_cfg(**kw):
         jev_timeout_sec=10, poly_private_key="0x1", poly_signature_type=0, poly_funder=None,
         clob_host="h", gamma_host="g", chain_id=137, slug_template="btc-updown-5m-{start}",
         candle_sets=[10, 20, 50], decision_candles=20, bet_usdc=5, max_price=0.7, min_confidence=0.55, min_edge=0.03, max_trades_per_day=10,
-        entry_delay_sec=0, decision_deadline_sec=60, dry_run=False, trade_log="/dev/null",
+        entry_delay_sec=0, jev_lead_sec=1.0, decision_deadline_sec=60, dry_run=False, trade_log="/dev/null",
     )
     base.update(kw)
     return Config(**base)
@@ -184,3 +184,18 @@ def test_log_trade_starts_new_file_when_columns_change(tmp_path):
     log_trade(str(path), {"window_start": 2}, log_fields([10, 20]))
     assert path.read_text().splitlines()[0].endswith("p_up_10,p_up_20")
     assert len(list(tmp_path.glob("trades.csv.*.old"))) == 1
+
+
+def test_uses_jev_answers_started_before_the_window():
+    from concurrent.futures import Future
+    start = int(time.time())
+    done = Future(); done.set_result((to_prediction(0.3), {}))
+    jev = MagicMock()
+    market = Market("s", "q", {"UP": "111", "DOWN": "222"}, True)
+    b = books([(0.5, 100)], [(0.5, 100)])
+    with patch("bot.main.get_books", return_value={"111": b["UP"], "222": b["DOWN"]}), \
+         patch("bot.main.fetch_candles") as fc:
+        row = Bot(make_cfg(dry_run=True), jev, None).run_window(start, market, (-0.9, {20: done}))
+    fc.assert_not_called()
+    jev.ask.assert_not_called()
+    assert row["decision"] == "DOWN" and row["candles_at_sec"] == -0.9

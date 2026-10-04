@@ -30,6 +30,7 @@ class Config:
     min_edge: float
     max_trades_per_day: int
     entry_delay_sec: float
+    jev_lead_sec: float
     decision_deadline_sec: float
     dry_run: bool
     trade_log: str = field(default="trades.csv")
@@ -57,7 +58,8 @@ class Config:
             min_confidence=float(os.getenv("MIN_CONFIDENCE", "0.55")),
             min_edge=float(os.getenv("MIN_EDGE", "0.03")),
             max_trades_per_day=int(os.getenv("MAX_TRADES_PER_DAY", "288")),
-            entry_delay_sec=float(os.getenv("ENTRY_DELAY_SEC", "1")),
+            entry_delay_sec=float(os.getenv("ENTRY_DELAY_SEC", "0.1")),
+            jev_lead_sec=float(os.getenv("JEV_LEAD_SEC", "1.0")),
             decision_deadline_sec=float(os.getenv("DECISION_DEADLINE_SEC", "60")),
             dry_run=_bool("DRY_RUN", False),
             trade_log=os.getenv("TRADE_LOG", "trades.csv"),

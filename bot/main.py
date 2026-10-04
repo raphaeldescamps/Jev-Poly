@@ -18,7 +18,7 @@ from .polymarket import Market, Trader, fill_price, find_market, get_books
 
 log = logging.getLogger("bot")
 BASE_FIELDS = ["window_start", "slug", "decision", "decision_candles", "confidence", "p_up",
-               "up_ask", "up_bid", "down_ask", "down_bid", "odds_at_sec", "decided_at_sec",
+               "up_ask", "up_bid", "down_ask", "down_bid", "candles_at_sec", "odds_at_sec", "decided_at_sec",
                "price", "edge", "usdc", "status", "detail"]
 
 
@@ -67,7 +67,13 @@ class Bot:
                 "down_ask": _r(down.best_ask), "down_bid": _r(down.best_bid), "odds_at_sec": round(at, 2)}
         return odds, {"UP": up, "DOWN": down}
 
-    def run_window(self, start: int, market: Market | None = None) -> dict:
+    def ask_jev(self, start: int) -> tuple[float, dict]:
+        """Snapshot the candles and send every set to Jev in the background. Returns (snapshot time, jobs)."""
+        candles = fetch_candles(start, max(self.cfg.candle_sets))
+        at = round(time.time() - start, 2)
+        return at, {n: self.pool.submit(self.jev.ask, candles[-n:]) for n in self.cfg.candle_sets}
+
+    def run_window(self, start: int, market: Market | None = None, jev_jobs=None) -> dict:
         cfg = self.cfg
         row = {"window_start": start, "slug": cfg.slug_template.format(start=start)}
 
@@ -80,12 +86,12 @@ class Bot:
         if market is None or not market.accepting_orders:
             return {**row, "status": "skipped", "detail": "market not found or not accepting orders"}
 
-        # Read the odds and ask Jev about every candle set, all at the same time.
+        # Jev normally started before the window opened (see loop); otherwise ask now.
         odds_job = self.pool.submit(self._read_odds, market, start)
-        candles = fetch_candles(start, max(cfg.candle_sets))
-        jev_jobs = {n: self.pool.submit(self.jev.ask, candles[-n:]) for n in cfg.candle_sets}
+        candles_at, jobs = jev_jobs if jev_jobs else self.ask_jev(start)
+        row["candles_at_sec"] = candles_at
         preds = {}
-        for n, job in jev_jobs.items():
+        for n, job in jobs.items():
             try:
                 preds[n] = job.result(timeout=cfg.jev_timeout_sec + 5)[0]
                 row[f"p_up_{n}"] = round(preds[n].p_up, 4)
@@ -134,8 +140,8 @@ class Bot:
     def loop(self) -> None:
         cfg = self.cfg
         mode = "DRY RUN" if cfg.dry_run else "LIVE"
-        log.info("Bot started in %s mode: entry at +%ss, candle sets %s (decides on %s), %s USDC per window, "
-                 "min confidence %s, min edge %s, max price %s", mode, cfg.entry_delay_sec, cfg.candle_sets,
+        log.info("Bot started in %s mode: Jev asked at -%ss, entry at +%ss, candle sets %s (decides on %s), %s USDC per window, "
+                 "min confidence %s, min edge %s, max price %s", mode, cfg.jev_lead_sec, cfg.entry_delay_sec, cfg.candle_sets,
                  cfg.decision_candles, cfg.bet_usdc, cfg.min_confidence, cfg.min_edge, cfg.max_price)
         fields = log_fields(cfg.candle_sets)
         tracker = OutcomeTracker(cfg.outcome_log, cfg.gamma_host)
@@ -156,9 +162,17 @@ class Bot:
                 log.warning("Prefetch of %s failed: %s", slug, exc)
                 market = None
 
+            # Ask Jev just before the window opens, so the answer is ready at +ENTRY_DELAY_SEC.
+            time.sleep(max(0.0, start - cfg.jev_lead_sec - time.time()))
+            try:
+                jev_jobs = self.ask_jev(start)
+            except Exception as exc:  # noqa: BLE001 - run_window retries after the open
+                log.warning("Early Jev call for %s failed: %s", slug, exc)
+                jev_jobs = None
+
             time.sleep(max(0.0, start + cfg.entry_delay_sec - time.time()))
             try:
-                row = self.run_window(start, market)
+                row = self.run_window(start, market, jev_jobs)
             except Exception as exc:  # noqa: BLE001 - one bad window must not stop the bot
                 log.exception("Window %s failed", start)
                 row = {"window_start": start, "slug": slug, "status": "error", "detail": str(exc)[:300]}

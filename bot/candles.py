@@ -49,7 +49,12 @@ def _coinbase(end_ts: int, count: int) -> list[Candle]:
 
 
 def fetch_candles(window_start: int, count: int = 20) -> list[Candle]:
-    """Return the `count` closed candles that end exactly at `window_start`, oldest first."""
+    """Return the `count` candles that end exactly at `window_start`, oldest first.
+
+    Called after `window_start`, all candles are closed. Called shortly before it, the
+    last candle is the one still in progress (both sources filter by candle start time),
+    which lets the bot ask Jev before the window opens.
+    """
     errors = []
     for name, source in (("binance", _binance), ("coinbase", _coinbase)):
         try:
