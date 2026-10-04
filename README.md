@@ -73,3 +73,13 @@ python -m scripts.evaluate      # hit rate by confidence and simulated P&L from 
 ```bash
 pip install pytest && pytest -q
 ```
+
+## Remote control from GitHub (deploy, check, status)
+
+The `Server` workflow (Actions tab → Server → Run workflow) logs in to the VPS as `bot` and runs one of:
+`status`, `check` (one Jev call), `deploy` (tests, pull, restart), `evaluate`.
+
+One-time setup on the server: `sudo bash /home/bot/jev-poly/deploy/setup_deploy_access.sh`, then add the
+repository secrets `DEPLOY_SSH_KEY` and `DEPLOY_HOST` that the script prints. The `bot` user can only
+start, restart and read the logs of the `polybot` service. Secrets in `.env` never leave the server.
+Note: on a public repo, workflow logs are public.

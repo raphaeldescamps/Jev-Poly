@@ -1,0 +1,42 @@
+name: Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to run on the server"
+        type: choice
+        options: [status, check, deploy, evaluate]
+        default: status
+
+concurrency: server
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        if: inputs.action == 'deploy'
+
+      - uses: actions/setup-python@v5
+        if: inputs.action == 'deploy'
+        with:
+          python-version: "3.12"
+
+      - name: Run tests before deploying
+        if: inputs.action == 'deploy'
+        run: |
+          pip install -q -r requirements.txt pytest
+          pytest -q
+
+      - name: Run on server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          ssh -o BatchMode=yes bot@"$HOST" \
+            "bash /home/bot/jev-poly/deploy/remote.sh ${{ inputs.action }} ${{ github.ref_name }}"
