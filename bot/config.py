@@ -57,7 +57,7 @@ class Config:
             jev_system_prompt=_system_prompt(),
             jev_timeout_sec=float(os.getenv("JEV_TIMEOUT_SEC", "30")),
             poly_private_key=os.getenv("POLY_PRIVATE_KEY", ""),
-            poly_signature_type=int(os.getenv("POLY_SIGNATURE_TYPE", "1")),
+            poly_signature_type=int(os.getenv("POLY_SIGNATURE_TYPE", "0")),
             poly_funder=os.getenv("POLY_FUNDER") or None,
             clob_host=os.getenv("POLY_CLOB_HOST", "https://clob.polymarket.com"),
             gamma_host=os.getenv("POLY_GAMMA_HOST", "https://gamma-api.polymarket.com"),

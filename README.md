@@ -17,7 +17,30 @@ cp .env.example .env   # then fill it in
 python -m bot.main
 ```
 
-Before the first live run, the wallet must hold USDC on Polygon and have approved the Polymarket exchange contracts. The easiest way is to deposit and place one manual trade on polymarket.com with the same wallet.
+## Wallet (run these on the VPS, so the key never leaves it)
+
+```bash
+python -m scripts.wallet new       # creates a key in .env (mode 600) and prints the address
+# send ~1 POL (gas) and USDC.e (bridged USDC, contract 0x2791...4174) on Polygon to that address
+python -m scripts.wallet approve   # approves the Polymarket exchange contracts
+python -m scripts.wallet status    # check balances and approvals
+```
+
+Back up `.env` offline. If the VPS is lost without a backup, the funds are lost.
+
+## VPS deployment (Ubuntu, Dublin region)
+
+```bash
+sudo adduser --disabled-password bot && sudo -iu bot
+git clone <repo> raphaelone && cd raphaelone
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env && nano .env        # Jev settings, DRY_RUN=true for the first day
+.venv/bin/python -m scripts.wallet new
+exit
+sudo cp /home/bot/raphaelone/deploy/polybot.service /etc/systemd/system/
+sudo systemctl enable --now polybot
+journalctl -u polybot -f
+```
 
 ## Safety checks
 

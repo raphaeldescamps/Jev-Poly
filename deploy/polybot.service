@@ -1,0 +1,14 @@
+[Unit]
+Description=Polymarket 5m BTC bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=bot
+WorkingDirectory=/home/bot/raphaelone
+ExecStart=/home/bot/raphaelone/.venv/bin/python -m bot.main
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
