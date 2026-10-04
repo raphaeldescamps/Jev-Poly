@@ -4,6 +4,7 @@
 #   remote.sh check      one test call to Jev (no order)
 #   remote.sh status     service state and recent log lines
 #   remote.sh evaluate   score Jev's logged calls
+#   remote.sh recent     last rows of trades.csv and outcomes.csv
 set -euo pipefail
 BRANCH="${2:-claude/polymarket-btc-trading-bot-vqmjwr}"
 cd /home/bot/jev-poly
@@ -35,6 +36,10 @@ case "${1:-}" in
   evaluate)
     .venv/bin/python -m scripts.evaluate
     ;;
+  recent)
+    echo "--- last windows (trades.csv) ---"; tail -n 12 trades.csv 2>/dev/null || echo "none yet"
+    echo "--- last outcomes (outcomes.csv) ---"; tail -n 12 outcomes.csv 2>/dev/null || echo "none yet"
+    ;;
   *)
-    echo "usage: remote.sh deploy|check|status|evaluate" >&2; exit 2 ;;
+    echo "usage: remote.sh deploy|check|status|evaluate|recent" >&2; exit 2 ;;
 esac

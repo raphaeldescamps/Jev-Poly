@@ -49,13 +49,6 @@ class Trader:
                                  signature_type=signature_type, funder=funder)
         self.client.set_api_creds(self.client.create_or_derive_api_creds())
 
-    def quote(self, token_id: str, usdc: float) -> float:
-        """Average fill price for a market buy of `usdc` against the current book."""
-        from py_clob_client.clob_types import OrderType
-        from py_clob_client.order_builder.constants import BUY
-
-        return float(self.client.calculate_market_price(token_id, BUY, usdc, OrderType.FOK))
-
     def buy(self, token_id: str, usdc: float, price: float) -> dict:
         """Fill-or-kill market buy. `price` is the worst price accepted."""
         from py_clob_client.clob_types import MarketOrderArgs, OrderType
@@ -65,3 +58,57 @@ class Trader:
             MarketOrderArgs(token_id=token_id, amount=usdc, side=BUY, price=price)
         )
         return self.client.post_order(order, OrderType.FOK)
+
+
+@dataclass
+class Book:
+    bids: list[tuple[float, float]]  # (price, size), best first
+    asks: list[tuple[float, float]]
+
+    @property
+    def best_bid(self) -> float | None:
+        return self.bids[0][0] if self.bids else None
+
+    @property
+    def best_ask(self) -> float | None:
+        return self.asks[0][0] if self.asks else None
+
+
+def get_books(clob_host: str, token_ids: list[str]) -> dict[str, Book]:
+    """Order books for several tokens in one public call (no wallet needed)."""
+    r = requests.post(f"{clob_host}/books", json=[{"token_id": t} for t in token_ids], timeout=5)
+    r.raise_for_status()
+    books = {}
+    for raw in r.json():
+        bids = sorted(((float(b["price"]), float(b["size"])) for b in raw.get("bids", [])), reverse=True)
+        asks = sorted((float(a["price"]), float(a["size"])) for a in raw.get("asks", []))
+        books[raw["asset_id"]] = Book(bids, asks)
+    return books
+
+
+def fill_price(book: Book, usdc: float) -> tuple[float, float] | None:
+    """Walk the asks for a `usdc` market buy. Return (average price, worst price), or None if too thin."""
+    spent = shares = 0.0
+    for price, size in book.asks:
+        take = min(size * price, usdc - spent)
+        spent += take
+        shares += take / price
+        if spent >= usdc - 1e-9:
+            return spent / shares, price
+    return None
+
+
+def fetch_resolution(gamma_host: str, slug: str) -> str | None:
+    """Return "UP" or "DOWN" once Polymarket has resolved the market, else None."""
+    r = requests.get(f"{gamma_host}/markets", params={"slug": slug}, timeout=10)
+    r.raise_for_status()
+    data = r.json()
+    if not data or not data[0].get("closed"):
+        return None
+    m = data[0]
+    outcomes = [o.strip().upper() for o in _as_list(m.get("outcomes"))]
+    prices = [float(p) for p in _as_list(m.get("outcomePrices"))]
+    for outcome, price in zip(outcomes, prices):
+        if price >= 0.99 and outcome in ("UP", "DOWN"):
+            return outcome
+    return None

@@ -32,6 +32,7 @@ class Config:
     decision_deadline_sec: float
     dry_run: bool
     trade_log: str = field(default="trades.csv")
+    outcome_log: str = field(default="outcomes.csv")
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -54,10 +55,11 @@ class Config:
             min_confidence=float(os.getenv("MIN_CONFIDENCE", "0.55")),
             min_edge=float(os.getenv("MIN_EDGE", "0.03")),
             max_trades_per_day=int(os.getenv("MAX_TRADES_PER_DAY", "288")),
-            entry_delay_sec=float(os.getenv("ENTRY_DELAY_SEC", "2")),
+            entry_delay_sec=float(os.getenv("ENTRY_DELAY_SEC", "1")),
             decision_deadline_sec=float(os.getenv("DECISION_DEADLINE_SEC", "60")),
             dry_run=_bool("DRY_RUN", False),
             trade_log=os.getenv("TRADE_LOG", "trades.csv"),
+            outcome_log=os.getenv("OUTCOME_LOG", "outcomes.csv"),
         )
         cfg.validate()
         return cfg

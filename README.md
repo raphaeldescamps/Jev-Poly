@@ -6,7 +6,9 @@ Every 5 minutes, at the start of each Polymarket "Bitcoin Up or Down – 5 minut
 2. Sends them to **Jev** (TypeSafe System One API) as one yes/no question: "the next candle closes higher than it opens". Jev returns the probability of yes.
 3. Picks the side Jev favours and buys it with a fill-or-kill order, only if Jev's probability beats the share price by `MIN_EDGE`.
 
-Every window is logged to `trades.csv`.
+Every window is logged to `trades.csv`: Jev's side, confidence and P(UP), the best bid/ask of both
+outcomes (read at the same time as the Jev call, about 1 second into the window), timings, and the decision.
+After each window resolves, `outcomes.csv` gets Polymarket's result and the Binance candle.
 
 ## Setup
 
@@ -77,7 +79,7 @@ pip install pytest && pytest -q
 ## Remote control from GitHub (deploy, check, status)
 
 The `Server` workflow (Actions tab → Server → Run workflow) logs in to the VPS as `bot` and runs one of:
-`status`, `check` (one Jev call), `deploy` (tests, pull, restart), `evaluate`.
+`status`, `check` (one Jev call), `deploy` (tests, pull, restart), `evaluate`, `recent` (last CSV rows).
 
 One-time setup on the server: `sudo bash /home/bot/jev-poly/deploy/setup_deploy_access.sh`, then add the
 repository secrets `DEPLOY_SSH_KEY` and `DEPLOY_HOST` that the script prints. The `bot` user can only

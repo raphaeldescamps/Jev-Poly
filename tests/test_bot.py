@@ -6,7 +6,8 @@ from bot.candles import Candle, fetch_candles
 from bot.config import Config
 from bot.jev import Jev, Prediction, build_state, to_prediction
 from bot.main import Bot, next_window_start
-from bot.polymarket import Market, find_market
+from bot.outcomes import OutcomeTracker
+from bot.polymarket import Book, Market, fetch_resolution, fill_price, find_market
 
 
 def make_cfg(**kw):
@@ -75,40 +76,46 @@ def test_find_market_maps_outcomes():
     assert m.tokens == {"UP": "111", "DOWN": "222"} and m.accepting_orders
 
 
-def run(cfg, p_up=0.7, price=0.5, start=None, trader=True):
+def books(up_asks, down_asks):
+    return {"UP": Book([(0.4, 100)], up_asks), "DOWN": Book([(0.4, 100)], down_asks)}
+
+
+def run(cfg, p_up=0.7, up_asks=((0.5, 100),), down_asks=((0.5, 100),), start=None, trader=True):
     start = start or int(time.time())
     jev = MagicMock(); jev.ask.return_value = (to_prediction(p_up), {})
-    t = MagicMock(); t.quote.return_value = price
-    t.buy.return_value = {"success": True}
+    t = MagicMock(); t.buy.return_value = {"success": True}
     market = Market("s", "q", {"UP": "111", "DOWN": "222"}, True)
-    with patch("bot.main.find_market", return_value=market), \
-         patch("bot.main.fetch_candles", return_value=candles(start)):
-        row = Bot(cfg, jev, t if trader else None).run_window(start)
+    b = books(list(up_asks), list(down_asks))
+    with patch("bot.main.fetch_candles", return_value=candles(start)), \
+         patch("bot.main.get_books", return_value={"111": b["UP"], "222": b["DOWN"]}):
+        row = Bot(cfg, jev, t if trader else None).run_window(start, market)
     return row, t
 
 
 def test_buys_side_jev_picks():
-    row, t = run(make_cfg(), p_up=0.3, price=0.6)  # DOWN at 0.70 vs price 0.60
+    row, t = run(make_cfg(), p_up=0.3, down_asks=[(0.6, 100)])  # DOWN at 0.70 vs ask 0.60
     assert row["status"] == "filled"
     t.buy.assert_called_once_with("222", 5, 0.6)
 
 
+def test_records_both_sides_odds_even_when_skipped():
+    row, t = run(make_cfg(), p_up=0.52, up_asks=[(0.51, 50)], down_asks=[(0.5, 50)])
+    assert "MIN_CONFIDENCE" in row["detail"]
+    assert row["up_ask"] == 0.51 and row["down_ask"] == 0.5 and row["up_bid"] == 0.4
+    assert row["odds_at_sec"] != "" and row["decided_at_sec"] != ""
+    t.buy.assert_not_called()
+
+
 def test_skips_without_edge():
-    row, t = run(make_cfg(), p_up=0.62, price=0.61)
+    row, t = run(make_cfg(), p_up=0.62, up_asks=[(0.61, 100)])
     assert row["status"] == "skipped" and "edge" in row["detail"]
     t.buy.assert_not_called()
 
 
 def test_skips_expensive_side():
-    row, t = run(make_cfg(), p_up=0.95, price=0.9)
+    row, t = run(make_cfg(), p_up=0.95, up_asks=[(0.9, 100)])
     assert "MAX_PRICE" in row["detail"]
     t.buy.assert_not_called()
-
-
-def test_skips_low_confidence():
-    row, t = run(make_cfg(), p_up=0.52)
-    assert "MIN_CONFIDENCE" in row["detail"]
-    t.quote.assert_not_called()
 
 
 def test_skips_late_decision():
@@ -117,13 +124,46 @@ def test_skips_late_decision():
     t.buy.assert_not_called()
 
 
-def test_dry_run_quotes_but_places_no_order():
+def test_dry_run_places_no_order():
     row, t = run(make_cfg(dry_run=True))
     assert row["status"] == "dry_run" and row["detail"] == "would buy"
-    t.quote.assert_called_once()
     t.buy.assert_not_called()
 
 
 def test_dry_run_without_wallet():
     row, _ = run(make_cfg(dry_run=True), trader=False)
     assert row["status"] == "dry_run" and row["decision"] == "UP"
+
+
+def test_fill_price_walks_levels():
+    book = Book([], [(0.5, 4), (0.6, 100)])  # 2 USDC at 0.5, rest at 0.6
+    avg, worst = fill_price(book, 5)
+    assert worst == 0.6 and abs(avg - 5 / (4 + 3 / 0.6)) < 1e-9
+    assert fill_price(Book([], [(0.5, 1)]), 5) is None
+
+
+def resp(data):
+    r = MagicMock(); r.json.return_value = data
+    return r
+
+
+def test_fetch_resolution():
+    closed = [{"closed": True, "outcomes": '["Up","Down"]', "outcomePrices": '["0","1"]'}]
+    with patch("bot.polymarket.requests.get", return_value=resp(closed)):
+        assert fetch_resolution("g", "s") == "DOWN"
+    with patch("bot.polymarket.requests.get", return_value=resp([{"closed": False}])):
+        assert fetch_resolution("g", "s") is None
+
+
+def test_outcome_tracker_waits_then_records(tmp_path):
+    path = tmp_path / "outcomes.csv"
+    tr = OutcomeTracker(str(path), "g")
+    tr.add(3000, "s")
+    with patch("bot.outcomes.fetch_resolution", return_value=None):
+        tr.update(now=3000 + 400)
+    assert tr.pending and not path.exists()  # not resolved yet, keep waiting
+    with patch("bot.outcomes.fetch_resolution", return_value="UP"), \
+         patch("bot.outcomes.fetch_candles", return_value=[Candle(3000, 1, 2, 0.5, 1.5, 1)]):
+        tr.update(now=3000 + 600)
+    assert not tr.pending and "UP" in path.read_text()
+    assert OutcomeTracker(str(path), "g").done == {3000}
