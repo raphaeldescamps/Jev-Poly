@@ -100,9 +100,14 @@ def fill_price(book: Book, usdc: float) -> tuple[float, float] | None:
 
 def fetch_resolution(gamma_host: str, slug: str) -> str | None:
     """Return "UP" or "DOWN" once Polymarket has resolved the market, else None."""
-    r = requests.get(f"{gamma_host}/markets", params={"slug": slug}, timeout=10)
-    r.raise_for_status()
-    data = r.json()
+    data = []
+    # Some Gamma queries leave out closed markets unless asked, so try both.
+    for params in ({"slug": slug, "closed": "true"}, {"slug": slug}):
+        r = requests.get(f"{gamma_host}/markets", params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        if data:
+            break
     if not data or not data[0].get("closed"):
         return None
     m = data[0]

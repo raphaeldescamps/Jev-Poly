@@ -20,6 +20,7 @@ class OutcomeTracker:
         if os.path.exists(path):
             self.done = {int(r["window_start"]) for r in csv.DictReader(open(path))}
         self.pending: dict[int, str] = {}  # window_start -> slug
+        self.warned: set[int] = set()
 
     def add(self, start: int, slug: str) -> None:
         if start not in self.done:
@@ -46,6 +47,9 @@ class OutcomeTracker:
                 log.warning("Resolution lookup failed for %s: %s", slug, exc)
                 poly = None
             if poly is None and now < end + GIVE_UP_AFTER:
+                if now > end + 900 and start not in self.warned:
+                    log.warning("No Polymarket resolution yet for %s, 15+ minutes after it ended", slug)
+                    self.warned.add(start)
                 continue
             try:
                 c = fetch_candles(end, 1)[0]
