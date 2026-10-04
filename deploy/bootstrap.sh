@@ -17,13 +17,13 @@ id bot >/dev/null 2>&1 || sudo adduser --disabled-password --gecos "" bot
 # Note: "sudo -i" mangles multi-line commands, so use -u/-H and an explicit cd.
 sudo -u bot -H bash -euc "
   cd /home/bot
-  if [ -d raphaelone/.git ]; then git -C raphaelone pull --ff-only; else rm -rf raphaelone; git clone '$REPO_URL' raphaelone; fi
-  cd raphaelone
+  if [ -d jev-poly/.git ]; then git -C jev-poly pull --ff-only; else rm -rf jev-poly; git clone '$REPO_URL' jev-poly; fi
+  cd jev-poly
   python3 -m venv .venv
   .venv/bin/pip install -q -r requirements.txt
   if [ ! -f .env ]; then cp .env.example .env; chmod 600 .env; sed -i 's/^DRY_RUN=.*/DRY_RUN=true/' .env; fi
 "
-sudo cp /home/bot/raphaelone/deploy/polybot.service /etc/systemd/system/
+sudo cp /home/bot/jev-poly/deploy/polybot.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 echo
@@ -31,6 +31,6 @@ echo "Polymarket API reachability from this server:"
 curl -s -o /dev/null -w "  clob.polymarket.com -> HTTP %{http_code}\n" https://clob.polymarket.com/time || true
 echo
 echo "Next steps:"
-echo "  sudo -iu bot nano raphaelone/.env                       # add JEV_API_KEY etc."
-echo "  sudo -iu bot bash -c 'cd raphaelone && .venv/bin/python -m scripts.wallet new'"
+echo "  sudo -iu bot nano jev-poly/.env                       # add JEV_API_KEY etc."
+echo "  sudo -iu bot bash -c 'cd jev-poly && .venv/bin/python -m scripts.wallet new'"
 echo "  sudo systemctl enable --now polybot && journalctl -u polybot -f"

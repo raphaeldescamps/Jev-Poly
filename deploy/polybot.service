@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 User=bot
-WorkingDirectory=/home/bot/raphaelone
-ExecStart=/home/bot/raphaelone/.venv/bin/python -m bot.main
+WorkingDirectory=/home/bot/jev-poly
+ExecStart=/home/bot/jev-poly/.venv/bin/python -m bot.main
 Restart=always
 RestartSec=10
 

@@ -32,12 +32,12 @@ Back up `.env` offline. If the VPS is lost without a backup, the funds are lost.
 
 ```bash
 sudo adduser --disabled-password bot && sudo -iu bot
-git clone <repo> raphaelone && cd raphaelone
+git clone <repo> jev-poly && cd jev-poly
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env && nano .env        # Jev settings, DRY_RUN=true for the first day
 .venv/bin/python -m scripts.wallet new
 exit
-sudo cp /home/bot/raphaelone/deploy/polybot.service /etc/systemd/system/
+sudo cp /home/bot/jev-poly/deploy/polybot.service /etc/systemd/system/
 sudo systemctl enable --now polybot
 journalctl -u polybot -f
 ```
