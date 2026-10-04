@@ -16,8 +16,8 @@ from .candles import INTERVAL, Candle
 log = logging.getLogger(__name__)
 
 QUESTION_ID = "next_candle_up"
-DEFAULT_INSTRUCTIONS = (
-    "`candles` holds the last 20 closed 5-minute BTC/USD candles, oldest first. "
+INSTRUCTIONS = (
+    "`candles` holds the last {n} closed 5-minute BTC/USD candles, oldest first. "
     "The next 5-minute candle starts at `next_candle_start`. "
     "Statement: the next 5-minute candle will close higher than it opens."
 )
@@ -60,12 +60,10 @@ def to_prediction(p_up: float) -> Prediction:
 
 class Jev:
     def __init__(self, api_key: str, model: str = "jev-latest",
-                 base_url: str = "https://api.typesafe.ai", timeout: float = 10,
-                 instructions: str = DEFAULT_INSTRUCTIONS, session=None):
+                 base_url: str = "https://api.typesafe.ai", timeout: float = 10, session=None):
         self.url = base_url.rstrip("/") + "/v1/systemone"
         self.model = model
         self.timeout = timeout
-        self.instructions = instructions
         self.session = session or requests.Session()
         self.session.headers.update({"Authorization": f"Bearer {api_key.strip()}",
                                      "Accept": "application/json"})
@@ -74,7 +72,7 @@ class Jev:
         body = {
             "state": build_state(candles),
             "model": self.model,
-            "questions": {QUESTION_ID: {"type": "noul", "instructions": self.instructions,
+            "questions": {QUESTION_ID: {"type": "noul", "instructions": INSTRUCTIONS.format(n=len(candles)),
                                         "criteria": CRITERIA}},
         }
         r = self.session.post(self.url, json=body, timeout=self.timeout)

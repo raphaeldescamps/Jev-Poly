@@ -15,7 +15,7 @@ def make_cfg(**kw):
         jev_api_key="k", jev_model="jev-latest", jev_base_url="https://api.typesafe.ai",
         jev_timeout_sec=10, poly_private_key="0x1", poly_signature_type=0, poly_funder=None,
         clob_host="h", gamma_host="g", chain_id=137, slug_template="btc-updown-5m-{start}",
-        candle_count=20, bet_usdc=5, max_price=0.7, min_confidence=0.55, min_edge=0.03, max_trades_per_day=10,
+        candle_sets=[10, 20, 50], decision_candles=20, bet_usdc=5, max_price=0.7, min_confidence=0.55, min_edge=0.03, max_trades_per_day=10,
         entry_delay_sec=0, decision_deadline_sec=60, dry_run=False, trade_log="/dev/null",
     )
     base.update(kw)
@@ -80,13 +80,15 @@ def books(up_asks, down_asks):
     return {"UP": Book([(0.4, 100)], up_asks), "DOWN": Book([(0.4, 100)], down_asks)}
 
 
-def run(cfg, p_up=0.7, up_asks=((0.5, 100),), down_asks=((0.5, 100),), start=None, trader=True):
+def run(cfg, p_up=0.7, up_asks=((0.5, 100),), down_asks=((0.5, 100),), start=None, trader=True, others=None):
     start = start or int(time.time())
-    jev = MagicMock(); jev.ask.return_value = (to_prediction(p_up), {})
+    jev = MagicMock()
+    others = others or {}
+    jev.ask.side_effect = lambda c: (to_prediction(p_up if len(c) == 20 else others.get(len(c), 0.5)), {})
     t = MagicMock(); t.buy.return_value = {"success": True}
     market = Market("s", "q", {"UP": "111", "DOWN": "222"}, True)
     b = books(list(up_asks), list(down_asks))
-    with patch("bot.main.fetch_candles", return_value=candles(start)), \
+    with patch("bot.main.fetch_candles", return_value=candles(start, 50)), \
          patch("bot.main.get_books", return_value={"111": b["UP"], "222": b["DOWN"]}):
         row = Bot(cfg, jev, t if trader else None).run_window(start, market)
     return row, t
@@ -167,3 +169,18 @@ def test_outcome_tracker_waits_then_records(tmp_path):
         tr.update(now=3000 + 600)
     assert not tr.pending and "UP" in path.read_text()
     assert OutcomeTracker(str(path), "g").done == {3000}
+
+
+def test_asks_jev_on_each_candle_set():
+    row, _ = run(make_cfg(dry_run=True), p_up=0.7, others={10: 0.3, 50: 0.61})
+    assert (row["p_up_10"], row["p_up_20"], row["p_up_50"]) == (0.3, 0.7, 0.61)
+    assert row["decision"] == "UP" and row["decision_candles"] == 20
+
+
+def test_log_trade_starts_new_file_when_columns_change(tmp_path):
+    from bot.main import log_fields, log_trade
+    path = tmp_path / "trades.csv"
+    path.write_text("window_start,old\n1,x\n")
+    log_trade(str(path), {"window_start": 2}, log_fields([10, 20]))
+    assert path.read_text().splitlines()[0].endswith("p_up_10,p_up_20")
+    assert len(list(tmp_path.glob("trades.csv.*.old"))) == 1

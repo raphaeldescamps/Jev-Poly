@@ -22,7 +22,8 @@ class Config:
     chain_id: int
     slug_template: str
 
-    candle_count: int
+    candle_sets: list[int]
+    decision_candles: int
     bet_usdc: float
     max_price: float
     min_confidence: float
@@ -49,7 +50,8 @@ class Config:
             gamma_host=os.getenv("POLY_GAMMA_HOST", "https://gamma-api.polymarket.com"),
             chain_id=int(os.getenv("POLY_CHAIN_ID", "137")),
             slug_template=os.getenv("POLY_SLUG_TEMPLATE", "btc-updown-5m-{start}"),
-            candle_count=int(os.getenv("CANDLE_COUNT", "20")),
+            candle_sets=[int(x) for x in os.getenv("CANDLE_SETS", "10,20,50").split(",")],
+            decision_candles=int(os.getenv("DECISION_CANDLES", "20")),
             bet_usdc=float(os.getenv("BET_USDC", "5")),
             max_price=float(os.getenv("MAX_PRICE", "0.70")),
             min_confidence=float(os.getenv("MIN_CONFIDENCE", "0.55")),
@@ -77,5 +79,7 @@ class Config:
             raise SystemExit("MAX_PRICE must be between 0 and 1")
         if not 0.5 <= self.min_confidence < 1:
             raise SystemExit("MIN_CONFIDENCE must be between 0.5 and 1")
+        if self.decision_candles not in self.candle_sets:
+            raise SystemExit("DECISION_CANDLES must be one of CANDLE_SETS")
         if self.bet_usdc <= 0:
             raise SystemExit("BET_USDC must be positive")

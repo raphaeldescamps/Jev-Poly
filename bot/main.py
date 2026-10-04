@@ -17,9 +17,14 @@ from .outcomes import OutcomeTracker
 from .polymarket import Market, Trader, fill_price, find_market, get_books
 
 log = logging.getLogger("bot")
-LOG_FIELDS = ["window_start", "slug", "decision", "confidence", "p_up",
-              "up_ask", "up_bid", "down_ask", "down_bid", "odds_at_sec", "decided_at_sec",
-              "price", "edge", "usdc", "status", "detail"]
+BASE_FIELDS = ["window_start", "slug", "decision", "decision_candles", "confidence", "p_up",
+               "up_ask", "up_bid", "down_ask", "down_bid", "odds_at_sec", "decided_at_sec",
+               "price", "edge", "usdc", "status", "detail"]
+
+
+def log_fields(candle_sets: list[int]) -> list[str]:
+    """Base columns plus one P(UP) column per candle set, e.g. p_up_10, p_up_20, p_up_50."""
+    return BASE_FIELDS + [f"p_up_{n}" for n in candle_sets]
 PREFETCH_SEC = 20  # look up the next window's market this long before it opens
 
 
@@ -27,13 +32,18 @@ def next_window_start(now: float) -> int:
     return (int(now) // INTERVAL + 1) * INTERVAL
 
 
-def log_trade(path: str, row: dict) -> None:
+def log_trade(path: str, row: dict, fields: list[str]) -> None:
+    if os.path.exists(path):
+        with open(path) as f:
+            header = f.readline().strip().split(",")
+        if header != fields:  # columns changed: keep the old file, start a new one
+            os.rename(path, f"{path}.{int(time.time())}.old")
     new = not os.path.exists(path)
     with open(path, "a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=LOG_FIELDS)
+        w = csv.DictWriter(f, fieldnames=fields)
         if new:
             w.writeheader()
-        w.writerow({k: row.get(k, "") for k in LOG_FIELDS})
+        w.writerow({k: row.get(k, "") for k in fields})
 
 
 def _r(x):
@@ -47,7 +57,7 @@ class Bot:
         self.trader = trader
         self.trades_today = 0
         self.day = dt.datetime.now(dt.timezone.utc).date()
-        self.pool = ThreadPoolExecutor(max_workers=2)
+        self.pool = ThreadPoolExecutor(max_workers=1 + len(cfg.candle_sets))
 
     def _read_odds(self, market: Market, start: int) -> tuple[dict, dict]:
         books = get_books(self.cfg.clob_host, [market.tokens["UP"], market.tokens["DOWN"]])
@@ -70,17 +80,28 @@ class Bot:
         if market is None or not market.accepting_orders:
             return {**row, "status": "skipped", "detail": "market not found or not accepting orders"}
 
-        # Read the odds and ask Jev at the same time.
+        # Read the odds and ask Jev about every candle set, all at the same time.
         odds_job = self.pool.submit(self._read_odds, market, start)
-        candles = fetch_candles(start, cfg.candle_count)
-        pred, _ = self.jev.ask(candles)
-        row.update(decision=pred.side, confidence=round(pred.confidence, 4), p_up=round(pred.p_up, 4),
-                   decided_at_sec=round(time.time() - start, 2))
+        candles = fetch_candles(start, max(cfg.candle_sets))
+        jev_jobs = {n: self.pool.submit(self.jev.ask, candles[-n:]) for n in cfg.candle_sets}
+        preds = {}
+        for n, job in jev_jobs.items():
+            try:
+                preds[n] = job.result(timeout=cfg.jev_timeout_sec + 5)[0]
+                row[f"p_up_{n}"] = round(preds[n].p_up, 4)
+            except Exception as exc:  # noqa: BLE001 - other sets are still useful
+                log.warning("Jev failed for %s candles: %s", n, exc)
         try:
             odds, books = odds_job.result(timeout=10)
             row.update(odds)
         except Exception as exc:  # noqa: BLE001
             return {**row, "status": "error", "detail": f"order book: {exc}"[:300]}
+        if cfg.decision_candles not in preds:
+            return {**row, "status": "error", "detail": f"Jev failed for the {cfg.decision_candles}-candle set"}
+        pred = preds[cfg.decision_candles]
+        row.update(decision=pred.side, decision_candles=cfg.decision_candles,
+                   confidence=round(pred.confidence, 4), p_up=round(pred.p_up, 4),
+                   decided_at_sec=round(time.time() - start, 2))
 
         if self.trades_today >= cfg.max_trades_per_day:
             return {**row, "status": "skipped", "detail": "daily trade limit reached"}
@@ -113,9 +134,10 @@ class Bot:
     def loop(self) -> None:
         cfg = self.cfg
         mode = "DRY RUN" if cfg.dry_run else "LIVE"
-        log.info("Bot started in %s mode: entry at +%ss, %s USDC per window, min confidence %s, "
-                 "min edge %s, max price %s", mode, cfg.entry_delay_sec, cfg.bet_usdc,
-                 cfg.min_confidence, cfg.min_edge, cfg.max_price)
+        log.info("Bot started in %s mode: entry at +%ss, candle sets %s (decides on %s), %s USDC per window, "
+                 "min confidence %s, min edge %s, max price %s", mode, cfg.entry_delay_sec, cfg.candle_sets,
+                 cfg.decision_candles, cfg.bet_usdc, cfg.min_confidence, cfg.min_edge, cfg.max_price)
+        fields = log_fields(cfg.candle_sets)
         tracker = OutcomeTracker(cfg.outcome_log, cfg.gamma_host)
         tracker.load_pending(cfg.trade_log)
         while True:
@@ -141,7 +163,7 @@ class Bot:
                 log.exception("Window %s failed", start)
                 row = {"window_start": start, "slug": slug, "status": "error", "detail": str(exc)[:300]}
             log.info("%s", row)
-            log_trade(cfg.trade_log, row)
+            log_trade(cfg.trade_log, row, fields)
             tracker.add(start, slug)
 
 

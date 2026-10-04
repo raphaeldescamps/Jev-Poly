@@ -39,6 +39,21 @@ def main(trades_path="trades.csv", outcomes_path="outcomes.csv") -> None:
           f"rest from Binance)")
     print(f"Jev hit rate, all windows:        {pct(sum(r['hit'] for r in rows), n)}")
 
+    sets = sorted(int(k[5:]) for k in rows[0] if k.startswith("p_up_") and k[5:].isdigit())
+    if sets:
+        print("\nBy candle set   hit rate               conf>=0.55 hits        avg conf  Brier (0.25 = coin flip)")
+        for k in sets:
+            sr = [r for r in rows if r.get(f"p_up_{k}")]
+            if not sr:
+                continue
+            p = [float(r[f"p_up_{k}"]) for r in sr]
+            hit = [(pi >= 0.5) == (r["actual"] == "UP") for pi, r in zip(p, sr)]
+            conf = [max(pi, 1 - pi) for pi in p]
+            strong = [h for h, c in zip(hit, conf) if c >= 0.55]
+            brier = sum((pi - (r["actual"] == "UP")) ** 2 for pi, r in zip(p, sr)) / len(sr)
+            print(f"  {k:3} candles   {pct(sum(hit), len(sr))}   {pct(sum(strong), len(strong))}"
+                  f"   {sum(conf) / len(conf):.3f}    {brier:.4f}")
+
     print("\nBy Jev confidence           hits           avg confidence")
     for lo, hi in ((0.5, 0.55), (0.55, 0.6), (0.6, 0.65), (0.65, 0.7), (0.7, 1.01)):
         b = [r for r in rows if lo <= float(r["confidence"]) < hi]
