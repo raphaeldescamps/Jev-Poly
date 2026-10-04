@@ -3,8 +3,8 @@
 Every 5 minutes, at the start of each Polymarket "Bitcoin Up or Down – 5 minute" window, the bot:
 
 1. Fetches the last 20 **closed** 5-minute BTC candles (Binance BTCUSDT, Coinbase BTC-USD as fallback).
-2. Sends them as CSV to **Jev**, an LLM on any OpenAI-compatible chat API.
-3. Reads Jev's answer (`UP` or `DOWN`) and places a fill-or-kill market buy of `BET_USDC` on that outcome.
+2. Sends them to **Jev** (TypeSafe System One API) as one yes/no question: "the next candle closes higher than it opens". Jev returns the probability of yes.
+3. Picks the side Jev favours and buys it with a fill-or-kill order, only if Jev's probability beats the share price by `MIN_EDGE`.
 
 Every window is logged to `trades.csv`.
 
@@ -47,12 +47,20 @@ journalctl -u polybot -f
 The bot skips a window (no order) when:
 
 - the market for that window is not found or is closed,
-- Jev's answer is not exactly one of UP / DOWN,
+- Jev's probability for its side is below `MIN_CONFIDENCE`,
+- Jev's probability minus the share price is below `MIN_EDGE`,
 - the decision arrives more than `DECISION_DEADLINE_SEC` (default 60) after the window opened,
 - the chosen side costs more than `MAX_PRICE` per share,
 - `MAX_TRADES_PER_DAY` is reached.
 
 `DRY_RUN=true` runs everything except the order.
+
+## Check Jev and score its calls
+
+```bash
+python -m scripts.jev_check     # one live call to Jev, prints P(UP) and latency
+python -m scripts.evaluate      # hit rate by confidence and simulated P&L from trades.csv
+```
 
 ## Assumptions to check
 
