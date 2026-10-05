@@ -6,7 +6,7 @@ on:
       action:
         description: "What to run on the server"
         type: choice
-        options: [status, check, deploy, evaluate, recent, usage, trim]
+        options: [status, check, deploy, evaluate, recent, usage, trim, backtest, backtest-report]
         default: status
 
 concurrency: server

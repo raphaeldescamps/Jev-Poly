@@ -7,6 +7,8 @@
 #   remote.sh recent     last rows of trades.csv and outcomes.csv
 #   remote.sh usage      CPU, memory, disk, network and file sizes
 #   remote.sh trim       remove caches the bot does not need
+#   remote.sh backtest   start a 7-day backtest in the background (costs Jev tokens)
+#   remote.sh backtest-report   progress and evaluate report of the backtest
 set -euo pipefail
 BRANCH="${2:-claude/polymarket-btc-trading-bot-vqmjwr}"
 cd /home/bot/jev-poly
@@ -52,10 +54,20 @@ case "${1:-}" in
     rm -rf ~/.cache/pip && echo "pip cache removed"
     find . -name "__pycache__" -type d -prune -exec rm -rf {} + && echo "python caches removed"
     ;;
+  backtest)
+    if pgrep -u bot -f scripts.backtest >/dev/null; then echo "A backtest is already running."; exit 0; fi
+    nohup .venv/bin/python -m scripts.backtest --days 7 --yes > backtest.log 2>&1 &
+    sleep 20; tail -n 5 backtest.log
+    ;;
+  backtest-report)
+    pgrep -u bot -f scripts.backtest >/dev/null && echo "Backtest still running." || echo "Backtest not running."
+    tail -n 3 backtest.log 2>/dev/null
+    [ -f backtest_trades.csv ] && .venv/bin/python -m scripts.evaluate backtest_trades.csv backtest_outcomes.csv
+    ;;
   recent)
     echo "--- last windows (trades.csv) ---"; tail -n 12 trades.csv 2>/dev/null || echo "none yet"
     echo "--- last outcomes (outcomes.csv) ---"; tail -n 12 outcomes.csv 2>/dev/null || echo "none yet"
     ;;
   *)
-    echo "usage: remote.sh deploy|check|status|evaluate|recent|usage|trim" >&2; exit 2 ;;
+    echo "usage: remote.sh deploy|check|status|evaluate|recent|usage|trim|backtest|backtest-report" >&2; exit 2 ;;
 esac

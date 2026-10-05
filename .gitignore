@@ -5,3 +5,5 @@ __pycache__/
 trades.csv
 *.log
 outcomes.csv
+backtest_*.csv
+backtest.log
