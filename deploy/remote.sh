@@ -5,6 +5,8 @@
 #   remote.sh status     service state and recent log lines
 #   remote.sh evaluate   score Jev's logged calls
 #   remote.sh recent     last rows of trades.csv and outcomes.csv
+#   remote.sh usage      CPU, memory, disk, network and file sizes
+#   remote.sh trim       remove caches the bot does not need
 set -euo pipefail
 BRANCH="${2:-claude/polymarket-btc-trading-bot-vqmjwr}"
 cd /home/bot/jev-poly
@@ -36,10 +38,24 @@ case "${1:-}" in
   evaluate)
     .venv/bin/python -m scripts.evaluate
     ;;
+  usage)
+    echo "--- uptime / load ---"; uptime
+    echo "--- memory ---"; free -m
+    echo "--- disk ---"; df -h / | tail -1
+    echo "--- network since boot (all interfaces) ---"
+    awk 'NR>2 && $1 !~ /lo:/ {rx+=$2; tx+=$10} END {printf "received %.1f MB, sent %.1f MB\n", rx/1e6, tx/1e6}' /proc/net/dev
+    echo "--- bot process ---"; ps -o pid,etime,%cpu,%mem,rss,cmd -u bot | grep -E "PID|bot.main" | grep -v grep
+    echo "--- bot files ---"; du -sh .venv ~/.cache 2>/dev/null; ls -la *.csv* 2>/dev/null | awk '{print $5, $9}'
+    echo "--- system journal ---"; journalctl --disk-usage 2>/dev/null || true
+    ;;
+  trim)
+    rm -rf ~/.cache/pip && echo "pip cache removed"
+    find . -name "__pycache__" -type d -prune -exec rm -rf {} + && echo "python caches removed"
+    ;;
   recent)
     echo "--- last windows (trades.csv) ---"; tail -n 12 trades.csv 2>/dev/null || echo "none yet"
     echo "--- last outcomes (outcomes.csv) ---"; tail -n 12 outcomes.csv 2>/dev/null || echo "none yet"
     ;;
   *)
-    echo "usage: remote.sh deploy|check|status|evaluate|recent" >&2; exit 2 ;;
+    echo "usage: remote.sh deploy|check|status|evaluate|recent|usage|trim" >&2; exit 2 ;;
 esac
