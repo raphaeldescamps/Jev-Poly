@@ -51,7 +51,7 @@ class Config:
             gamma_host=os.getenv("POLY_GAMMA_HOST", "https://gamma-api.polymarket.com"),
             chain_id=int(os.getenv("POLY_CHAIN_ID", "137")),
             slug_template=os.getenv("POLY_SLUG_TEMPLATE", "btc-updown-5m-{start}"),
-            candle_sets=[int(x) for x in os.getenv("CANDLE_SETS", "10,50,100").split(",")],
+            candle_sets=[int(x) for x in os.getenv("CANDLE_SETS", "20,50,100").split(",")],
             decision_candles=int(os.getenv("DECISION_CANDLES", "50")),
             bet_usdc=float(os.getenv("BET_USDC", "5")),
             max_price=float(os.getenv("MAX_PRICE", "0.70")),
