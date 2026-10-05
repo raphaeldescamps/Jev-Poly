@@ -37,6 +37,43 @@ def pct(hits, n):
     return f"{hits:4}/{n:<4} = {hits / n:6.1%}" if n else "   -"
 
 
+BUCKETS = ((0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.01))
+
+
+def print_confidence_bets(rows, sets) -> None:
+    """Simulate 1 USDC on Jev's side at the recorded ask, per candle set and 10% confidence band."""
+    print("\nBet 1 USDC on Jev's side at the ask, by confidence band (before fees)")
+    print("  set   band       bets   hits            avg ask   P&L      per bet   95% range per bet")
+    for k in sets:
+        for lo, hi in BUCKETS:
+            bets = []
+            for r in rows:
+                p = r.get(f"p_up_{k}")
+                if not p or not r.get("up_ask") or not r.get("down_ask"):
+                    continue
+                p = float(p)
+                side = "UP" if p >= 0.5 else "DOWN"
+                conf = max(p, 1 - p)
+                if not lo <= conf < hi:
+                    continue
+                ask = float(r["up_ask"] if side == "UP" else r["down_ask"])
+                if not 0 < ask < 1:
+                    continue
+                won = side == r["actual"]
+                bets.append((ask, won, (1 / ask - 1) if won else -1.0))
+            band = f"{lo:.0%}-{min(hi, 1):.0%}"
+            if not bets:
+                print(f"  {k:4}  {band:9}     0")
+                continue
+            n = len(bets)
+            pnl = sum(b[2] for b in bets)
+            mean = pnl / n
+            sd = (sum((b[2] - mean) ** 2 for b in bets) / max(n - 1, 1)) ** 0.5
+            half = 1.96 * sd / n ** 0.5
+            print(f"  {k:4}  {band:9} {n:5}   {pct(sum(b[1] for b in bets), n)}   {sum(b[0] for b in bets) / n:.3f}"
+                  f"   {pnl:+7.2f}  {mean:+6.1%}   {mean - half:+.1%} to {mean + half:+.1%}")
+
+
 def main(trades_path="trades.csv", outcomes_path="outcomes.csv") -> None:
     rows = load(trades_path, outcomes_path)
     if not rows:
@@ -60,6 +97,8 @@ def main(trades_path="trades.csv", outcomes_path="outcomes.csv") -> None:
             brier = sum((pi - (r["actual"] == "UP")) ** 2 for pi, r in zip(p, sr)) / len(sr)
             print(f"  {k:3} candles   {pct(sum(hit), len(sr))}   {pct(sum(strong), len(strong))}"
                   f"   {sum(conf) / len(conf):.3f}    {brier:.4f}")
+
+    print_confidence_bets(rows, sets)
 
     print("\nBy Jev confidence           hits           avg confidence")
     for lo, hi in ((0.5, 0.55), (0.55, 0.6), (0.6, 0.65), (0.65, 0.7), (0.7, 1.01)):
