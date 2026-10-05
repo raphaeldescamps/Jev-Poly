@@ -97,6 +97,13 @@ def main(trades_path="trades.csv", outcomes_path="outcomes.csv") -> None:
             brier = sum((pi - (r["actual"] == "UP")) ** 2 for pi, r in zip(p, sr)) / len(sr)
             print(f"  {k:3} candles   {pct(sum(hit), len(sr))}   {pct(sum(strong), len(strong))}"
                   f"   {sum(conf) / len(conf):.3f}    {brier:.4f}")
+        print("\nCalls by side   Jev said UP            BTC actually went UP")
+        for k in sets:
+            sr = [r for r in rows if r.get(f"p_up_{k}")]
+            if sr:
+                ups = sum(float(r[f"p_up_{k}"]) >= 0.5 for r in sr)
+                real = sum(r["actual"] == "UP" for r in sr)
+                print(f"  {k:3} candles   {pct(ups, len(sr))}   {pct(real, len(sr))}")
 
     print_confidence_bets(rows, sets)
 

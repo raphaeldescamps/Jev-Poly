@@ -7,10 +7,14 @@
 #   remote.sh recent     last rows of trades.csv and outcomes.csv
 #   remote.sh usage      CPU, memory, disk, network and file sizes
 #   remote.sh trim       remove caches the bot does not need
-#   remote.sh backtest   start a 7-day backtest in the background (costs Jev tokens)
+#   remote.sh backtest BRANCH DAYS SETS   start a backtest in the background (costs Jev tokens)
 #   remote.sh backtest-report   progress and evaluate report of the backtest
 set -euo pipefail
 BRANCH="${2:-claude/polymarket-btc-trading-bot-vqmjwr}"
+DAYS="${3:-7}"
+SETS="${4:-}"
+[[ "$DAYS" =~ ^[0-9]{1,3}$ ]] || { echo "bad days: $DAYS" >&2; exit 2; }
+[[ -z "$SETS" || "$SETS" =~ ^[0-9]{1,3}(,[0-9]{1,3}){0,4}$ ]] || { echo "bad sets: $SETS" >&2; exit 2; }
 cd /home/bot/jev-poly
 
 mode() { echo "Mode: $(grep -E '^DRY_RUN=' .env | cut -d= -f2 | awk '{print $1}' | sed 's/true/DRY RUN (no orders)/;s/false/LIVE/')"; }
@@ -56,7 +60,7 @@ case "${1:-}" in
     ;;
   backtest)
     if pgrep -u bot -f scripts.backtest >/dev/null; then echo "A backtest is already running."; exit 0; fi
-    nohup .venv/bin/python -m scripts.backtest --days 7 --yes > backtest.log 2>&1 &
+    nohup .venv/bin/python -m scripts.backtest --days "$DAYS" ${SETS:+--sets "$SETS"} --yes > backtest.log 2>&1 &
     sleep 20; tail -n 5 backtest.log
     ;;
   backtest-report)

@@ -8,6 +8,12 @@ on:
         type: choice
         options: [status, check, deploy, evaluate, recent, usage, trim, backtest, backtest-report]
         default: status
+      days:
+        description: "Backtest only: number of days"
+        default: "7"
+      sets:
+        description: "Backtest only: candle sets, e.g. 50 or 20,50,100 (empty = server default)"
+        default: ""
 
 concurrency: server
 
@@ -34,9 +40,13 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           HOST: ${{ secrets.DEPLOY_HOST }}
+          DAYS: ${{ inputs.days }}
+          SETS: ${{ inputs.sets }}
         run: |
+          [[ "$DAYS" =~ ^[0-9]{1,3}$ ]] || { echo "bad days"; exit 2; }
+          [[ -z "$SETS" || "$SETS" =~ ^[0-9]{1,3}(,[0-9]{1,3}){0,4}$ ]] || { echo "bad sets"; exit 2; }
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -t ed25519 "$HOST" > ~/.ssh/known_hosts 2>/dev/null
           ssh -o BatchMode=yes bot@"$HOST" \
-            "bash /home/bot/jev-poly/deploy/remote.sh ${{ inputs.action }} ${{ github.ref_name }}"
+            "bash /home/bot/jev-poly/deploy/remote.sh ${{ inputs.action }} ${{ github.ref_name }} $DAYS $SETS"

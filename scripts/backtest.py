@@ -155,6 +155,12 @@ def main() -> None:
     log.info("Loaded %d Binance candles", len(history))
     jev = Jev(cfg.jev_api_key, cfg.jev_model, cfg.jev_base_url, cfg.jev_timeout_sec)
     fields = log_fields(sets)
+    if os.path.exists(TRADES):  # keep the existing columns so earlier rows stay aligned
+        with open(TRADES) as f:
+            existing = f.readline().strip().split(",")
+        fields = existing + [k for k in fields if k not in existing]
+        if fields != existing:
+            sys.exit(f"{TRADES} lacks columns {[k for k in fields if k not in existing]}; move it aside first.")
     done = errors = 0
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         jobs = {pool.submit(run_window, cfg, jev, history, sets, ws): ws for ws in windows}
