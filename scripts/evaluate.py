@@ -7,6 +7,7 @@ Prints Jev's hit rate overall and by confidence, how often Jev beat the market
 price, and simulated profit for the windows where the bot would have bought.
 """
 import csv
+import glob
 import os
 import sys
 
@@ -18,9 +19,15 @@ def load(trades_path="trades.csv", outcomes_path="outcomes.csv"):
             actual = o["poly_outcome"] if o["poly_outcome"] in ("UP", "DOWN") else o["binance_outcome"]
             if actual in ("UP", "DOWN"):
                 outcomes[o["window_start"]] = (actual, o["poly_outcome"] in ("UP", "DOWN"))
-    rows = []
-    for t in csv.DictReader(open(trades_path)):
-        if t.get("decision") in ("UP", "DOWN") and t["window_start"] in outcomes:
+    rows, seen = [], set()
+    # Include archived logs (trades.csv.<time>.old) so column changes do not lose history.
+    for path in [trades_path] + sorted(glob.glob(f"{trades_path}.*.old"), reverse=True):
+        for t in csv.DictReader(open(path)):
+            if t["window_start"] in seen:
+                continue
+            seen.add(t["window_start"])
+            if t.get("decision") not in ("UP", "DOWN") or t["window_start"] not in outcomes:
+                continue
             actual, from_poly = outcomes[t["window_start"]]
             rows.append({**t, "actual": actual, "from_poly": from_poly, "hit": t["decision"] == actual})
     return rows
@@ -39,7 +46,7 @@ def main(trades_path="trades.csv", outcomes_path="outcomes.csv") -> None:
           f"rest from Binance)")
     print(f"Jev hit rate, all windows:        {pct(sum(r['hit'] for r in rows), n)}")
 
-    sets = sorted(int(k[5:]) for k in rows[0] if k.startswith("p_up_") and k[5:].isdigit())
+    sets = sorted({int(k[5:]) for r in rows for k in r if k.startswith("p_up_") and k[5:].isdigit()})
     if sets:
         print("\nBy candle set   hit rate               conf>=0.55 hits        avg conf  Brier (0.25 = coin flip)")
         for k in sets:

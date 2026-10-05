@@ -2,9 +2,9 @@
 
 Every 5 minutes, at the start of each Polymarket "Bitcoin Up or Down – 5 minute" window, the bot:
 
-1. Fetches the last 10, 20 and 50 **closed** 5-minute BTC candles (`CANDLE_SETS`) (Binance BTCUSDT, Coinbase BTC-USD as fallback).
+1. Fetches the last 10, 50 and 100 **closed** 5-minute BTC candles (`CANDLE_SETS`) (Binance BTCUSDT, Coinbase BTC-USD as fallback).
 2. Sends each set to **Jev** in a separate, parallel request (TypeSafe System One API) as one yes/no question: "the next candle closes higher than it opens". Jev returns the probability of yes.
-3. Uses the `DECISION_CANDLES` set (default 20) to pick the side Jev favours and buys it with a fill-or-kill order, only if Jev's probability beats the share price by `MIN_EDGE`.
+3. Uses the `DECISION_CANDLES` set (default 50) to pick the side Jev favours and buys it with a fill-or-kill order, only if Jev's probability beats the share price by `MIN_EDGE`.
 
 Every window is logged to `trades.csv`: Jev's side, confidence and P(UP), the best bid/ask of both
 outcomes (read at the same time as the Jev call, about 1 second into the window), timings, and the decision.
